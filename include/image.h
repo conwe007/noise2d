@@ -27,16 +27,8 @@ class Image
 {
 public:
     Image();
-    void clear();
-    size_t get_width();
-    size_t get_height();
-    size_t load(const char* file_name);
     size_t save(const char* file_name);
-    Color get_pixel(unsigned int x, unsigned int y);
-    void set_pixel(Color color, unsigned int x, unsigned int y);
-    std::vector<std::vector<int>> gradient_map();
-    void create_from_threshold_matrix(std::vector<std::vector<int>> threshold_matrix);
-    std::vector<std::vector<int>> get_threshold_matrix_from_image();
+    void create_from_matrix(std::vector<std::vector<int>> matrix);
 
 private:
     std::vector<unsigned char> pixels;

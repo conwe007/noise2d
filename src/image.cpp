@@ -1,6 +1,24 @@
 #include "image.h"
 #include <iostream>
 
+Color::Color()
+{
+    r = 0;
+    g = 0;
+    b = 0;
+    a = Color::CHANNEL_MAX;
+    return;
+}
+
+Color::Color(int16_t r, int16_t g, int16_t b, int16_t a)
+{
+    this->r = r;
+    this->g = g;
+    this->b = b;
+    this->a = a;
+    return;
+}
+
 // initializes empty image
 Image::Image()
 {
@@ -8,42 +26,6 @@ Image::Image()
     width = 0;
     height = 0;
     return;
-}
-
-// erases all image data and reinitializes object
-void Image::clear()
-{
-    pixels.resize(0);
-    width = 0;
-    height = 0;
-    return;
-}
-
-// returns image's width
-size_t Image::get_width()
-{
-    return width;
-}
-
-// returns image's height
-size_t Image::get_height()
-{
-    return height;
-}
-
-// loads a png from the specified path
-size_t Image::load(const char* file_name)
-{
-    clear();
-    
-    size_t error = lodepng::decode(pixels, width, height, file_name);
-
-    if(error)
-    {
-        std::cout << "error: load - " << error << ": " << lodepng_error_text(error) << std::endl;
-    }
-
-    return error;
 }
 
 // saves a png to the specified path
@@ -59,34 +41,11 @@ size_t Image::save(const char* file_name)
     return error;
 }
 
-// gets the pixel color at (x, y)
-Color Image::get_pixel(unsigned int x, unsigned int y)
-{
-    Color color = Color();
-    int index_start = Color::NUM_BYTES_COLOR * width * y + Color::NUM_BYTES_COLOR * x;
-    color.r = pixels[index_start + Color::INDEX_R];
-    color.g = pixels[index_start + Color::INDEX_G];
-    color.b = pixels[index_start + Color::INDEX_B];
-    color.a = pixels[index_start + Color::INDEX_A];
-    return color;
-}
-
-// sets the pixel color at (x, y)
-void Image::set_pixel(Color color, unsigned int x, unsigned int y)
-{
-    int index_start = Color::NUM_BYTES_COLOR * width * y + Color::NUM_BYTES_COLOR * x;
-    pixels[index_start + Color::INDEX_R] = color.r;
-    pixels[index_start + Color::INDEX_G] = color.g;
-    pixels[index_start + Color::INDEX_B] = color.b;
-    pixels[index_start + Color::INDEX_A] = color.a;
-    return;
-}
-
 // fills image with a grayscale representation of specified threshold map
-void Image::create_from_threshold_matrix(std::vector<std::vector<int>> threshold_matrix)
+void Image::create_from_matrix(std::vector<std::vector<int>> matrix)
 {
-    height = threshold_matrix.size();
-    width = threshold_matrix[0].size();
+    height = matrix.size();
+    width = matrix[0].size();
     pixels.resize(width * height * Color::NUM_BYTES_COLOR);
 
     for(size_t y = 0; y < height; y++)
@@ -94,28 +53,12 @@ void Image::create_from_threshold_matrix(std::vector<std::vector<int>> threshold
         for(size_t x = 0; x < width; x++)
         {
             int index_pixels = Color::NUM_BYTES_COLOR * width * y + Color::NUM_BYTES_COLOR * x;
-            pixels[index_pixels + 0] = threshold_matrix[y][x];
-            pixels[index_pixels + 1] = threshold_matrix[y][x];
-            pixels[index_pixels + 2] = threshold_matrix[y][x];
+            pixels[index_pixels + 0] = matrix[y][x];
+            pixels[index_pixels + 1] = matrix[y][x];
+            pixels[index_pixels + 2] = matrix[y][x];
             pixels[index_pixels + 3] = Color::CHANNEL_MAX;
         }
     }
 
     return;
-}
-
-// creates a threshold matrix from the loaded image, assuming image is grayscale
-std::vector<std::vector<int>> Image::get_threshold_matrix_from_image()
-{
-    std::vector<std::vector<int>> threshold_matrix = std::vector<std::vector<int>>(height, std::vector<int>(width, 0));
-
-    for(size_t y = 0; y < height; y++)
-    {
-        for(size_t x = 0; x < width; x++)
-        {
-            threshold_matrix[y][x] = pixels[y * Color::NUM_BYTES_COLOR + x];
-        }
-    }
-
-    return threshold_matrix;
 }

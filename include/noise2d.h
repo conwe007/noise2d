@@ -125,7 +125,7 @@ public:
     /**
      * Do not use default constructor; width and height must be specified.
      */
-    EnergyLUT() = delete;
+    EnergyLUT();
 
     /**
      * Constructor for EnergyLUT objects.
@@ -491,6 +491,19 @@ void Noise2D<T>::binary_pattern_invert(std::vector<std::vector<int>> &binary_pat
         }
     }
 
+    return;
+}
+
+template<typename T>
+Noise2D<T>::EnergyLUT::EnergyLUT()
+{
+    height = 0;
+    width = 0;
+    LUT = std::vector<std::vector<double>>(height, std::vector<double>(width, 0.0));
+    value_lowest_energy = DBL_MAX;
+    value_highest_energy = 0.0;
+    coordinate_lowest_energy = std::pair<int, int>(-1, -1);
+    coordinate_highest_energy = std::pair<int, int>(-1, -1);
     return;
 }
 

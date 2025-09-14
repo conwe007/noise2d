@@ -28,11 +28,11 @@ main : $(OBJ)
 	$(CC) -o $(BDIR)/$@ $^ $(CFLAGS) $(LIBS)
 
 # rule to make example_blue_noise.cpp and build the result as blue_noise.exe
-blue_noise: example_blue_noise.o
+blue_noise: ./examples/example_blue_noise.cpp ./src/fourier.cpp ./src/image.cpp ./src/lodepng.cpp
 	$(CC) -o $(BDIR)/$@ $^ $(CFLAGS) $(LIBS)
 
 # rule to make example_blue_noise.cpp and build the result as blue_noise.exe
-brown_noise: example_brown_noise.o
+brown_noise: ./examples/example_brown_noise.cpp ./src/fourier.cpp ./src/image.cpp ./src/lodepng.cpp
 	$(CC) -o $(BDIR)/$@ $^ $(CFLAGS) $(LIBS)
 
 # rule to make example_blue_noise.cpp and build the result as blue_noise.exe
@@ -42,4 +42,4 @@ white_noise: ./examples/example_white_noise.cpp ./src/fourier.cpp ./src/image.cp
 .PHONY : clean
 
 clean:
-	rm -f $(ODIR)/*.o
+	rm -f $(ODIR)/*.o $(OUTDIR)/*.png $(BDIR)/*.exe
