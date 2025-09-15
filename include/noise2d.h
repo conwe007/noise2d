@@ -66,7 +66,7 @@ public:
     [[nodiscard]] T get_noise_at(std::size_t x, std::size_t y) const;
 
     /**
-     * Method to generate blue noise using Ulichey's Void and Cluster algorithm.
+     * Method to generate blue noise using Ulichney's Void and Cluster algorithm.
      * 
      * @param sigma The standard deviation of the Gaussian function used to generate blue noise.
      * Low values of sigma result in ordered patterns, while high values of sigma result in stronger low-frequency components.
