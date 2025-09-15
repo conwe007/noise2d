@@ -25,7 +25,7 @@
 
 #include <algorithm> // std::max
 #include <cfloat> // DBL_MIN, DBL_MAX
-#include <cstddef> // std::size_t
+#include <cmath> // acos
 #include <random> // std::random_device, std::mt19337, std::uniform_int_distribution
 #include <stdexcept> // std::out_of_range
 #include <vector> // std::vector
@@ -79,8 +79,13 @@ public:
      * 
      * @param leaky_integrator A scalar that is multiplied by the integral sum each step to ensure the noise does not deviate far from zero in large images.
      * If not specified, a default value of 0.999 is used.
+     * @param kernel_size The size of the Gaussian kernel used to convolute the white noise into brown noise.
+     * A size of 3 corresponds to a 3x3 kernel.
+     * If not specified, a default value of 3 is used.
+     * @param sigma The standard deviation of the Gaussian kernel used to convolute the white noise into brown noise.
+     * A larger value of sigma gives more weight to cells further from the center cell and vice versa.
      */
-    void generate_brown_noise(double leaky_integrator = 0.999);
+    void generate_brown_noise(double leaky_integrator = 0.999, std::size_t kernel_size = 3, double sigma = 1.0);
 
     /**
      * Method to generate white noise.
@@ -133,7 +138,7 @@ public:
      * @param width The width of the LUT.
      * @param height The height of the LUT.
      */
-    EnergyLUT(size_t width, size_t height);
+    EnergyLUT(std::size_t width, std::size_t height);
 
     /**
      * Method that fills the LUT with the calculated Gaussian "energy" value at each cell.
@@ -151,16 +156,36 @@ public:
      * @param y The y coordinate of the cell that has changed from a zero to a one or vice versa.
      * @param sigma The standard deviation of the Gaussian function used to calculate the energy at each cell.
      */
-    void update(std::vector<std::vector<int>> binary_pattern, size_t x, size_t y, double sigma);
+    void update(std::vector<std::vector<int>> binary_pattern, std::size_t x, std::size_t y, double sigma);
 
     std::vector<std::vector<double>> LUT; // the LUT that stores the Gaussian energy of each cell
-    size_t height; // the height of the LUT
-    size_t width; // the width of the LUT
+    std::size_t height; // the height of the LUT
+    std::size_t width; // the width of the LUT
     double value_lowest_energy; // the lowest value currently present in the LUT
     double value_highest_energy; // the highest value currently present in the LUT
     std::pair<int, int> coordinate_lowest_energy; // the coordinate of the lowest value currently present in the LUT
     std::pair<int, int> coordinate_highest_energy; // the coordinate of the highest value currently present in the LUT
 };
+
+/**
+ * Method to convolute a matrix against a kernel.
+ * 
+ * @param matrix The 2d matrix to convolute.
+ * @param kernel The kernel used to perform the convolution.
+ * @returns The convoluted matrix.
+ */
+std::vector<std::vector<double>> convolute(std::vector<std::vector<double>> matrix, std::vector<std::vector<double>> kernel, double leaky_integrator);
+
+/**
+ * Method to generate a Gaussian kernel.
+ * 
+ * @param size The size of the generated kernel.
+ * A size of 3 corresponds to a 3x3 kernel.
+ * @param sigma The standard deviation of the Gaussian kernel.
+ * A larger value of sigma gives more weight to cells further from the center cell and vice versa.
+ * @returns The generated kernel.
+ */
+std::vector<std::vector<double>> gaussian_kernel(std::size_t size, double sigma);
 
 template<typename T>
 Noise2D<T>::Noise2D(std::size_t width, std::size_t height, std::size_t output_levels)
@@ -202,14 +227,13 @@ void Noise2D<T>::generate_blue_noise(double sigma)
 }
 
 template<typename T>
-void Noise2D<T>::generate_brown_noise(double leaky_integrator)
+void Noise2D<T>::generate_brown_noise(double leaky_integrator, std::size_t kernel_size, double sigma)
 {
-    std::vector<std::vector<T>> data_white_noise = std::vector<std::vector<T>>(height, std::vector<T>(width, static_cast<T>(0)));
-    std::vector<std::vector<double>> data_temporary = std::vector<std::vector<double>>(height, std::vector<double>(width, 0.0));
+    std::vector<std::vector<double>> data_white_noise = std::vector<std::vector<double>>(height, std::vector<double>(width, 0.0));
+    std::vector<std::vector<double>> kernel = gaussian_kernel(kernel_size, sigma);
     std::random_device rd;
     std::mt19937 mt(rd());
-    double input_min = DBL_MAX;
-    double input_max = DBL_MIN;
+    std::uniform_real_distribution<> dis(0, 1);
     double integrated_min = DBL_MAX;
     double integrated_max = DBL_MIN;
 
@@ -218,46 +242,17 @@ void Noise2D<T>::generate_brown_noise(double leaky_integrator)
     {
         for(std::size_t x = 0; x < width; x++)
         {
-            if constexpr(std::is_integral<T>::value)
-            {
-                std::uniform_int_distribution<> dis(0, output_levels - 1);
-                data_white_noise[y][x] = dis(mt);
-            }
-            else
-            {
-                std::uniform_real_distribution<> dis(0, 1);
-                data_white_noise[y][x] = dis(mt);
-            }
-
-            // get min and max values from white noise matrix
-            if(data_white_noise[y][x] < input_min)
-            {
-                input_min = static_cast<double>(data_white_noise[y][x]);
-            }
-            if(data_white_noise[y][x] > input_max)
-            {
-                input_max = static_cast<double>(data_white_noise[y][x]);
-            }
+            data_white_noise[y][x] = dis(mt);
         }
     }
 
-    double half_input_range = (input_max - input_min) / 2.0;
-
-    // integrate white noise matrix
-    for(size_t y = 0; y < height; y++)
+    // convolute the white noise matrix
+    std::vector<std::vector<double>> data_temporary = convolute(data_white_noise, kernel, leaky_integrator);
+    
+    for(std::size_t y = 0; y < height; y++)
     {
-        for(size_t x = 0; x < width; x++)
+        for(std::size_t x = 0; x < width; x++)
         {
-            data_temporary[y][x] = 0.0;
-
-            for(size_t j = 0; j <= y; j++)
-            {
-                for(size_t i = 0; i <= x; i++)
-                {
-                    data_temporary[y][x] += (static_cast<double>(data_white_noise[j][i]) - half_input_range) * leaky_integrator;
-                }
-            }
-            
             if(data_temporary[y][x] < integrated_min)
             {
                 integrated_min = data_temporary[y][x];
@@ -270,12 +265,12 @@ void Noise2D<T>::generate_brown_noise(double leaky_integrator)
         }
     }
 
-    double integrated_range = integrated_max - integrated_min;
+    const double integrated_range = integrated_max - integrated_min;
 
     // normalize to output levels
-    for(size_t y = 0; y < height; y++)
+    for(std::size_t y = 0; y < height; y++)
     {
-        for(size_t x = 0; x < width; x++)
+        for(std::size_t x = 0; x < width; x++)
         {
             data[y][x] = static_cast<T>((data_temporary[y][x] - integrated_min) * static_cast<double>(output_levels - 1) / integrated_range);
         }
@@ -313,19 +308,19 @@ void Noise2D<T>::generate_white_noise()
 template<typename T>
 void Noise2D<T>::generate_blue_noise_initial_binary_pattern(double sigma)
 {
-    size_t num_pixels = height * width;
-    size_t num_minority_pixels = static_cast<size_t>(std::max(1, static_cast<int>(static_cast<double>(num_pixels) * COVERAGE))); // must have at least 1 minority pixel
+    const std::size_t num_pixels = height * width;
+    const std::size_t num_minority_pixels = static_cast<std::size_t>(std::max(1, static_cast<int>(static_cast<double>(num_pixels) * COVERAGE))); // must have at least 1 minority pixel
     std::vector<std::pair<int, int>> remaining_coordinates = std::vector<std::pair<int, int>>(num_pixels, {-1, -1});
     std::random_device rd;
     std::mt19937 mt(rd());
 
     // fill remaining_coordinates with all coordinates in the binary pattern matrix
-    for(size_t y = 0; y < height; y++)
+    for(std::size_t y = 0; y < height; y++)
     {
-        for(size_t x = 0; x < width; x++)
+        for(std::size_t x = 0; x < width; x++)
         {
             // ((y * height) + x) maps 2d array coords to a 1d array
-            size_t index_remaining_coordinates = (y * height) + x;
+            std::size_t index_remaining_coordinates = (y * height) + x;
             remaining_coordinates[index_remaining_coordinates].first = x;
             remaining_coordinates[index_remaining_coordinates].second = y;
         }
@@ -342,7 +337,7 @@ void Noise2D<T>::generate_blue_noise_initial_binary_pattern(double sigma)
     }
 
     // fill binary pattern with num_minority_pixels ones
-    for(size_t index_remaining_coordinates = 0; index_remaining_coordinates < num_pixels; index_remaining_coordinates++)
+    for(std::size_t index_remaining_coordinates = 0; index_remaining_coordinates < num_pixels; index_remaining_coordinates++)
     {
         std::pair<int, int> coordinate = remaining_coordinates[index_remaining_coordinates];
         if(index_remaining_coordinates < num_minority_pixels)
@@ -354,7 +349,7 @@ void Noise2D<T>::generate_blue_noise_initial_binary_pattern(double sigma)
     energy_lut.create(binary_pattern_initial, sigma);
 
     // limiting iterations ensures that this will not get stuck forever if there is a bug
-    size_t count = 0;
+    std::size_t count = 0;
     while(count < 100)
     {
         // find the tightest cluster and remove it
@@ -382,8 +377,7 @@ void Noise2D<T>::generate_blue_noise_initial_binary_pattern(double sigma)
 template<typename T>
 void Noise2D<T>::generate_blue_noise_rank_data_phase_1(double sigma)
 {
-    int ones = std::max(1, static_cast<int>(static_cast<double>(width * height) * COVERAGE)); // must have at least 1 minority pixel (one)
-    int rank = ones - 1;
+    int rank = std::max(1, static_cast<int>(static_cast<double>(width * height) * COVERAGE)) - 1; // must have at least 1 minority pixel (one)
 
     binary_pattern_copy(binary_pattern_initial, binary_pattern_prototype);
     energy_lut.create(binary_pattern_prototype, sigma);
@@ -403,9 +397,8 @@ void Noise2D<T>::generate_blue_noise_rank_data_phase_1(double sigma)
 template<typename T>
 void Noise2D<T>::generate_blue_noise_rank_data_phase_2(double sigma)
 {
-    int num_pixels_half = width * height / 2;
-    int ones = std::max(1, static_cast<int>(static_cast<double>(width * height) * COVERAGE)); // must have at least 1 minority pixel (one)
-    int rank = ones;
+    const int num_pixels_half = width * height / 2;
+    int rank = std::max(1, static_cast<int>(static_cast<double>(width * height) * COVERAGE)); // must have at least 1 minority pixel (one)
 
     binary_pattern_copy(binary_pattern_initial, binary_pattern_prototype);
     energy_lut.create(binary_pattern_prototype, sigma);
@@ -425,9 +418,8 @@ void Noise2D<T>::generate_blue_noise_rank_data_phase_2(double sigma)
 template<typename T>
 void Noise2D<T>::generate_blue_noise_rank_data_phase_3(double sigma)
 {
-    int num_pixels = width * height;
-    int num_pixels_half = num_pixels / 2;
-    int rank = num_pixels_half;
+    const int num_pixels = width * height;
+    int rank = num_pixels / 2;
 
     binary_pattern_invert(binary_pattern_prototype);
     energy_lut.create(binary_pattern_prototype, sigma);
@@ -447,9 +439,9 @@ void Noise2D<T>::generate_blue_noise_rank_data_phase_3(double sigma)
 template<typename T>
 void Noise2D<T>::normalize_blue_noise_rank_data()
 {
-    for(size_t y = 0; y < height; y++)
+    for(std::size_t y = 0; y < height; y++)
     {
-        for(size_t x = 0; x < width; x++)
+        for(std::size_t x = 0; x < width; x++)
         {
             if constexpr(std::is_integral<T>::value)
             {
@@ -469,9 +461,9 @@ void Noise2D<T>::normalize_blue_noise_rank_data()
 template<typename T>
 void Noise2D<T>::binary_pattern_copy(std::vector<std::vector<int>> &binary_pattern_source, std::vector<std::vector<int>> &binary_pattern_destination)
 {
-    for(size_t y = 0; y < height; y++)
+    for(std::size_t y = 0; y < height; y++)
     {
-        for(size_t x = 0; x < width; x++)
+        for(std::size_t x = 0; x < width; x++)
         {
             binary_pattern_destination[y][x] = binary_pattern_source[y][x];
         }
@@ -483,9 +475,9 @@ void Noise2D<T>::binary_pattern_copy(std::vector<std::vector<int>> &binary_patte
 template<typename T>
 void Noise2D<T>::binary_pattern_invert(std::vector<std::vector<int>> &binary_pattern)
 {
-    for(size_t y = 0; y < height; y++)
+    for(std::size_t y = 0; y < height; y++)
     {
-        for(size_t x = 0; x < width; x++)
+        for(std::size_t x = 0; x < width; x++)
         {
             binary_pattern[y][x] = binary_pattern[y][x] ? 0 : 1;
         }
@@ -508,7 +500,7 @@ Noise2D<T>::EnergyLUT::EnergyLUT()
 }
 
 template<typename T>
-Noise2D<T>::EnergyLUT::EnergyLUT(size_t width, size_t height)
+Noise2D<T>::EnergyLUT::EnergyLUT(std::size_t width, std::size_t height)
 {
     this->height = height;
     this->width = width;
@@ -523,42 +515,46 @@ Noise2D<T>::EnergyLUT::EnergyLUT(size_t width, size_t height)
 template<typename T>
 void Noise2D<T>::EnergyLUT::create(std::vector<std::vector<int>> binary_pattern, double sigma)
 {
+    const double M_PI = acos(-1.0);
+    const double half_width = static_cast<double>(width) / 2.0;
+    const double half_height = static_cast<double>(height) / 2.0;
+    const double two_sigma_squared = 2.0 * sigma * sigma;
+    double dy = 0.0;
+    double dx = 0.0;
+
     value_lowest_energy = DBL_MAX;
     value_highest_energy = 0.0;
-    double half_width = static_cast<double>(width) / 2.0;
-    double half_height = static_cast<double>(height) / 2.0;
-    double two_sigma_squared = 2.0 * sigma * sigma;
 
-    for(size_t y = 0; y < height; y++)
+    for(std::size_t y = 0; y < height; y++)
     {
-        for(size_t x = 0; x < width; x++)
+        for(std::size_t x = 0; x < width; x++)
         {
             // reset LUT value before calculating energy
             LUT[y][x] = 0.0;
 
             // calculate the contribution of each pixel in the binary pattern
-            for(size_t j = 0; j < height; j++)
+            for(std::size_t j = 0; j < height; j++)
             {
-                double dy = std::abs(static_cast<double>(y) - static_cast<double>(j));
+                dy = std::abs(static_cast<double>(y) - static_cast<double>(j));
 
                 if(dy > half_height)
                 {
                     dy = height - dy;
                 }
 
-                for(size_t i = 0; i < width; i++)
+                for(std::size_t i = 0; i < width; i++)
                 {
                     // only pixels of value 1 contribute to the energy
                     if(binary_pattern[j][i] == 1)
                     {
-                        double dx = std::abs(static_cast<double>(x) - static_cast<double>(i));
+                        dx = std::abs(static_cast<double>(x) - static_cast<double>(i));
                 
                         if(dx > half_width)
                         {
                             dx = width - dx;
                         }
 
-                        LUT[y][x] += exp(-1 * ((dx * dx) + (dy * dy)) / two_sigma_squared);
+                        LUT[y][x] += exp(-1 * ((dx * dx) + (dy * dy)) / two_sigma_squared) / (M_PI * two_sigma_squared);
                     }
                 }
             }
@@ -583,35 +579,39 @@ void Noise2D<T>::EnergyLUT::create(std::vector<std::vector<int>> binary_pattern,
 }
 
 template<typename T>
-void Noise2D<T>::EnergyLUT::update(std::vector<std::vector<int>> binary_pattern, size_t x, size_t y, double sigma)
+void Noise2D<T>::EnergyLUT::update(std::vector<std::vector<int>> binary_pattern, std::size_t x, std::size_t y, double sigma)
 {
-    double half_width = static_cast<double>(width) / 2.0;
-    double half_height = static_cast<double>(height) / 2.0;
-    double two_sigma_squared = 2 * sigma * sigma;
+    const double M_PI = acos(-1.0);
+    const double half_width = static_cast<double>(width) / 2.0;
+    const double half_height = static_cast<double>(height) / 2.0;
+    const double two_sigma_squared = 2 * sigma * sigma;
+    double dy = 0.0;
+    double dx = 0.0;
+    double gaussian_value = 0.0;
 
     value_lowest_energy = DBL_MAX;
     value_highest_energy = 0.0;
 
     // calculate the contribution of each pixel in the binary pattern
-    for(size_t j = 0; j < height; j++)
+    for(std::size_t j = 0; j < height; j++)
     {
-        double dy = std::abs(static_cast<double>(y) - static_cast<double>(j));
+        dy = std::abs(static_cast<double>(y) - static_cast<double>(j));
 
         if(dy > half_height)
         {
             dy = height - dy;
         }
 
-        for(size_t i = 0; i < width; i++)
+        for(std::size_t i = 0; i < width; i++)
         {
-            double dx = std::abs(static_cast<double>(x) - static_cast<double>(i));
+            dx = std::abs(static_cast<double>(x) - static_cast<double>(i));
     
             if(dx > half_width)
             {
                 dx = width - dx;
             }
 
-            double gaussian_value = exp(-1 * ((dx * dx) + (dy * dy)) / two_sigma_squared);
+            gaussian_value = exp(-1 * ((dx * dx) + (dy * dy)) / two_sigma_squared) / (M_PI * two_sigma_squared);
 
             // if the newly updated pixel is a 1, then add to the other pixels
             if(binary_pattern[y][x] == 1)
@@ -641,6 +641,70 @@ void Noise2D<T>::EnergyLUT::update(std::vector<std::vector<int>> binary_pattern,
     }
 
     return;
+}
+
+std::vector<std::vector<double>> convolute(std::vector<std::vector<double>> matrix, std::vector<std::vector<double>> kernel, double leaky_integrator)
+{
+    const std::size_t matrix_height = matrix.size();
+    const std::size_t matrix_width = matrix[0].size();
+    const std::size_t kernel_height = kernel.size();
+    const std::size_t kernel_width = kernel[0].size();
+    const std::size_t kernel_height_half = kernel_height / 2;
+    const std::size_t kernel_width_half = kernel_width / 2;
+    const double kernel_area = static_cast<double>(kernel_height * kernel_width);
+    std::vector<std::vector<double>> convoluted_matrix = std::vector<std::vector<double>>(matrix_height, std::vector<double>(matrix_width, 0.0));
+    double sum = 0.0;
+
+    for(std::size_t my = 0; my < matrix_height; my++)
+    {
+        for(std::size_t mx = 0; mx < matrix_width; mx++)
+        {
+            sum = 0;
+            
+            for(std::size_t ky = 0; ky < kernel_height; ky++)
+            {
+                for(std::size_t kx = 0; kx < kernel_width; kx++)
+                {
+                    std::size_t dy = (matrix_height + ((my + ky - kernel_height_half) % matrix_height)) % matrix_height;
+                    std::size_t dx = (matrix_width + ((mx + kx - kernel_width_half) % matrix_width)) % matrix_width;
+                    sum += matrix[dy][dx] * kernel[ky][kx] * leaky_integrator;
+                }
+            }
+            
+            convoluted_matrix[my][mx] = sum / kernel_area;
+        }
+    }
+
+    return convoluted_matrix;
+}
+
+std::vector<std::vector<double>> gaussian_kernel(std::size_t size, double sigma)
+{
+    std::vector<std::vector<double>> kernel = std::vector<std::vector<double>>(size, std::vector<double>(size, 0.0));
+
+    const double M_PI = acos(-1.0);
+    const int half_size = size / 2;
+    const float two_sigma_squared = 2.0 * sigma * sigma;
+    double sum = 0.0;
+
+    for(int y = -half_size; y < half_size + 1; y++)
+    {
+        for(int x = -half_size; x < half_size + 1; x++)
+        {
+            kernel[y + half_size][x + half_size] = exp(-1 * (x * x + y * y) / two_sigma_squared) / (M_PI * two_sigma_squared);
+            sum += kernel[y + half_size][x + half_size];
+        }
+    }
+
+    for(std::size_t y = 0; y < size; y++)
+    {
+        for(std::size_t x = 0; x < size; x++)
+        {
+            kernel[y][x] /= sum;
+        }
+    }
+
+    return kernel;
 }
 
 #endif

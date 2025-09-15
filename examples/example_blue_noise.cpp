@@ -28,12 +28,12 @@
 #include <chrono> // std::chrono::time_point, std::chrono::steady_clock, std::chrono::nanoseconds
 #include <iostream> // std::cout, std::endl
 
-std::vector<std::vector<int>> create_matrix_from_noise(Noise2D<int> noise, size_t width, size_t height);
+std::vector<std::vector<int>> create_matrix_from_noise(Noise2D<int> noise, std::size_t width, std::size_t height);
 std::string generate_blue_noise(int width, int height, int output_levels, double sigma, bool fourier, bool benchmark);
 
 int main()
 {
-    size_t output_levels = 256;
+    std::size_t output_levels = 256;
     double sigma = 1.9;
     bool fourier = true;
     bool benchmark = true;
@@ -106,13 +106,13 @@ std::string generate_blue_noise(int width, int height, int output_levels, double
     return output;
 }
 
-std::vector<std::vector<int>> create_matrix_from_noise(Noise2D<int> noise, size_t width, size_t height)
+std::vector<std::vector<int>> create_matrix_from_noise(Noise2D<int> noise, std::size_t width, std::size_t height)
 {
     std::vector<std::vector<int>> matrix = std::vector<std::vector<int>>(height, std::vector<int>(width, 0));
 
-    for(size_t y = 0; y < height; y++)
+    for(std::size_t y = 0; y < height; y++)
     {
-        for(size_t x = 0; x < width; x++)
+        for(std::size_t x = 0; x < width; x++)
         {
             matrix[y][x] = noise.get_noise_at(x, y);
         }
