@@ -83,7 +83,7 @@ public:
      * A size of 3 corresponds to a 3x3 kernel.
      * If not specified, a default value of 3 is used.
      * @param sigma The standard deviation of the Gaussian kernel used to convolute the white noise into brown noise.
-     * A larger value of sigma gives more weight to cells further from the center cell and vice versa.
+     * A larger value of sigma results in blurrier noise and vice versa.
      */
     void generate_brown_noise(double leaky_integrator = 0.999, std::size_t kernel_size = 3, double sigma = 1.0);
 
@@ -515,7 +515,6 @@ Noise2D<T>::EnergyLUT::EnergyLUT(std::size_t width, std::size_t height)
 template<typename T>
 void Noise2D<T>::EnergyLUT::create(std::vector<std::vector<int>> binary_pattern, double sigma)
 {
-    const double M_PI = acos(-1.0);
     const double half_width = static_cast<double>(width) / 2.0;
     const double half_height = static_cast<double>(height) / 2.0;
     const double two_sigma_squared = 2.0 * sigma * sigma;
@@ -554,7 +553,7 @@ void Noise2D<T>::EnergyLUT::create(std::vector<std::vector<int>> binary_pattern,
                             dx = width - dx;
                         }
 
-                        LUT[y][x] += exp(-1 * ((dx * dx) + (dy * dy)) / two_sigma_squared) / (M_PI * two_sigma_squared);
+                        LUT[y][x] += exp(-1 * ((dx * dx) + (dy * dy)) / two_sigma_squared);
                     }
                 }
             }
@@ -581,7 +580,6 @@ void Noise2D<T>::EnergyLUT::create(std::vector<std::vector<int>> binary_pattern,
 template<typename T>
 void Noise2D<T>::EnergyLUT::update(std::vector<std::vector<int>> binary_pattern, std::size_t x, std::size_t y, double sigma)
 {
-    const double M_PI = acos(-1.0);
     const double half_width = static_cast<double>(width) / 2.0;
     const double half_height = static_cast<double>(height) / 2.0;
     const double two_sigma_squared = 2 * sigma * sigma;
@@ -611,7 +609,7 @@ void Noise2D<T>::EnergyLUT::update(std::vector<std::vector<int>> binary_pattern,
                 dx = width - dx;
             }
 
-            gaussian_value = exp(-1 * ((dx * dx) + (dy * dy)) / two_sigma_squared) / (M_PI * two_sigma_squared);
+            gaussian_value = exp(-1 * ((dx * dx) + (dy * dy)) / two_sigma_squared);
 
             // if the newly updated pixel is a 1, then add to the other pixels
             if(binary_pattern[y][x] == 1)
