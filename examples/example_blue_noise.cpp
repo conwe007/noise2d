@@ -26,6 +26,7 @@
 #include "lodepng.h" // png encoder/decoder
 #include "noise2d.h" // noise generation functions
 #include <chrono> // std::chrono::time_point, std::chrono::steady_clock, std::chrono::nanoseconds
+#include <filesystem> // std::filesystem
 #include <iostream> // std::cout, std::endl
 
 std::vector<std::vector<int>> create_matrix_from_noise(Noise2D<int> noise, std::size_t width, std::size_t height);
@@ -33,6 +34,17 @@ std::string generate_blue_noise(int width, int height, int output_levels, double
 
 int main()
 {
+    // create output directory if it does not exist
+    std::filesystem::path dirPath = "output";
+    try
+    {
+        std::filesystem::create_directory(dirPath);
+    }
+    catch(const std::filesystem::filesystem_error& e)
+    {
+        std::cerr << "Filesystem error: " << e.what() << std::endl;
+    }
+
     std::size_t output_levels = 256;
     double sigma = 1.9;
     bool fourier = true;
